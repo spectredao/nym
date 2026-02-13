@@ -1,5 +1,6 @@
 use nym_connection_monitor::ConnectionStatusEvent;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub use super::socks5_test::HttpsConnectivityResult;
 
@@ -48,6 +49,10 @@ pub struct WgProbeResults {
     pub download_duration_milliseconds_v6: u64,
     pub downloaded_file_v6: String,
     pub download_error_v6: String,
+
+    /// port → open/closed from exit policy check (if requested)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port_check_results: Option<HashMap<String, bool>>,
 }
 
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
@@ -180,6 +185,19 @@ impl Socks5ProbeResults {
     pub fn https_connectivity(&self) -> &HttpsConnectivityResult {
         &self.https_connectivity
     }
+}
+
+/// Output of the `run-ports` subcommand — per-port TCP reachability through
+/// the WG exit tunnel, without the full probe outcome.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortCheckResult {
+    pub gateway: String,
+    pub can_register: bool,
+    pub port_check_target: String,
+    /// port → open/closed
+    pub ports: HashMap<String, bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
