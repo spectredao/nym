@@ -4593,18 +4593,17 @@ name = "mixtcp"
 version = "0.0.1"
 dependencies = [
  "bytes",
- "dirs",
+ "hickory-proto",
+ "hickory-resolver",
  "nym-bin-common",
  "nym-ip-packet-requests",
  "nym-sdk",
  "reqwest 0.12.22",
  "rustls 0.23.29",
- "serde_json",
  "smoltcp",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "webpki-roots 0.26.11",
 ]
 
