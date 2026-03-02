@@ -46,6 +46,16 @@ impl StaticResolver {
         }
     }
 
+    /// Add multiple entries to the static resolver.
+    /// This is useful for dynamically adding resolved API endpoints that need to bypass
+    /// the firewall by ensuring they resolve to whitelisted IPs.
+    pub fn add_entries(&self, entries: HashMap<String, Vec<IpAddr>>) {
+        let mut map = self.static_addr_map.lock().unwrap();
+        for (name, ips) in entries {
+            map.insert(name, Entry::new(ips));
+        }
+    }
+
     /// Return the full set of domain names and associated addresses stored in this static lookup table
     pub fn get_addrs(&self) -> HashMap<String, Vec<IpAddr>> {
         let mut out = HashMap::new();

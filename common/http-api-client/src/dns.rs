@@ -42,6 +42,7 @@
 
 use crate::ClientBuilder;
 
+use once_cell::sync::OnceCell;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
@@ -56,7 +57,6 @@ use hickory_resolver::{
     lookup_ip::LookupIpIntoIter,
     name_server::TokioConnectionProvider,
 };
-use once_cell::sync::OnceCell;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use tracing::*;
 
@@ -130,7 +130,7 @@ pub struct HickoryDnsResolver {
     // construction of the resolver.
     state: Arc<OnceCell<TokioResolver>>,
     fallback: Option<Arc<OnceCell<TokioResolver>>>,
-    static_base: Option<Arc<OnceCell<StaticResolver>>>,
+    static_base: Option<Arc<StaticResolver>>,
     use_shared: bool,
     /// Overall timeout for dns lookup associated with any individual host resolution. For example,
     /// use of retries, server_ordering_strategy, etc. ends absolutely if this timeout is reached.
@@ -175,7 +175,7 @@ async fn resolve(
     name: Name,
     resolver: Arc<OnceCell<TokioResolver>>,
     maybe_fallback: Option<Arc<OnceCell<TokioResolver>>>,
-    maybe_static: Option<Arc<OnceCell<StaticResolver>>>,
+    maybe_static: Option<Arc<StaticResolver>>,
     independent: bool,
     overall_dns_timeout: Duration,
 ) -> Result<Addrs, ResolveError> {
@@ -185,10 +185,8 @@ async fn resolve(
     // looked up previously within the timeout to where we are not yet ready to try the
     // default resolver yet again.
     if let Some(ref static_resolver) = maybe_static {
-        let resolver =
-            static_resolver.get_or_init(|| HickoryDnsResolver::new_static_fallback(independent));
-
-        if let Some(addrs) = resolver.pre_resolve(name.as_str()) {
+        // StaticResolver has interior mutability, so we can just use it directly
+        if let Some(addrs) = static_resolver.pre_resolve(name.as_str()) {
             let addrs: Addrs =
                 Box::new(addrs.into_iter().map(|ip_addr| SocketAddr::new(ip_addr, 0)));
             return Ok(addrs);
@@ -234,10 +232,8 @@ async fn resolve(
     // check the table for our entry
     if let Some(ref static_resolver) = maybe_static {
         debug!("checking static");
-        let resolver =
-            static_resolver.get_or_init(|| HickoryDnsResolver::new_static_fallback(independent));
-
-        if let Ok(addrs) = resolver.resolve(name).await {
+        // StaticResolver has interior mutability, so we can just use it directly
+        if let Ok(addrs) = static_resolver.resolve(name).await {
             return Ok(addrs);
         }
     }
@@ -311,13 +307,13 @@ impl HickoryDnsResolver {
     }
 
     fn new_static_fallback(use_shared: bool) -> StaticResolver {
-        if use_shared && let Some(ref shared_resolver) = SHARED_RESOLVER.static_base {
-            shared_resolver
-                .get_or_init(new_default_static_fallback)
-                .clone()
-        } else {
-            new_default_static_fallback()
+        if use_shared {
+            // Try to clone from shared resolver if available
+            if let Some(ref shared_resolver) = SHARED_RESOLVER.static_base {
+                return (**shared_resolver).clone();
+            }
         }
+        new_default_static_fallback()
     }
 
     /// Enable fallback to the system default resolver if the primary (DoX) resolver fails
@@ -350,15 +346,28 @@ impl HickoryDnsResolver {
     /// Get the current map of hostname to address in use by the fallback static lookup if one
     /// exists.
     pub fn get_static_fallbacks(&self) -> Option<HashMap<String, Vec<IpAddr>>> {
-        Some(self.static_base.as_ref()?.get()?.get_addrs())
+        // StaticResolver uses Arc<Mutex<...>> internally, so we can just
+        // use it directly without any locking at this level
+        self.static_base
+            .as_ref()
+            .map(|resolver| resolver.get_addrs())
     }
 
     /// Set (or overwrite) the map of addresses used in the fallback static hostname lookup
     pub fn set_static_fallbacks(&mut self, addrs: HashMap<String, Vec<IpAddr>>) {
-        let cell = OnceCell::new();
-        cell.set(StaticResolver::new(addrs))
-            .expect("infallible assign");
-        self.static_base = Some(Arc::new(cell));
+        self.static_base = Some(Arc::new(StaticResolver::new(addrs)));
+    }
+
+    /// Add static fallback entries to the shared resolver instance.
+    /// This affects all HickoryDnsResolver instances that use the shared resolver (which is the default).
+    /// This is useful for dynamically adding resolved API endpoints after firewall rules are established,
+    /// ensuring that connections use the whitelisted IPs.
+    pub fn add_static_fallbacks_to_shared(addrs: HashMap<String, Vec<IpAddr>>) {
+        // If static_base exists, add the entries
+        // StaticResolver uses Arc<Mutex<...>> internally, so it's thread-safe
+        if let Some(ref static_base) = SHARED_RESOLVER.static_base {
+            static_base.add_entries(addrs);
+        }
     }
 
     /// Successfully resolved addresses are cached for a minimum of 30 minutes
