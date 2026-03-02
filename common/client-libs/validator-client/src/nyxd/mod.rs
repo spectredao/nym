@@ -214,6 +214,22 @@ impl NyxdClient<crate::ReqwestRpcClient, DirectSecp256k1HdWallet> {
         let wallet = DirectSecp256k1HdWallet::from_mnemonic(prefix, mnemonic);
         Self::connect_with_signer(config, client, wallet)
     }
+
+    /// Create a signing Nyxd client that uses the given [`reqwest::Client`] for RPC.
+    /// Use this when the client must use custom DNS (e.g. resolver overrides or Hickory)
+    /// instead of the default system resolver.
+    pub fn connect_reqwest_with_mnemonic_client(
+        config: Config,
+        endpoint: Url,
+        mnemonic: bip39::Mnemonic,
+        reqwest_client: reqwest::Client,
+    ) -> DirectSigningReqwestRpcNyxdClient {
+        let client = crate::ReqwestRpcClient::new_with_client(endpoint, reqwest_client);
+
+        let prefix = &config.chain_details.bech32_account_prefix;
+        let wallet = DirectSecp256k1HdWallet::from_mnemonic(prefix, mnemonic);
+        Self::connect_with_signer(config, client, wallet)
+    }
 }
 
 impl<C, S> NyxdClient<C, S>

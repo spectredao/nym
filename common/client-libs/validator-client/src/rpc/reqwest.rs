@@ -61,6 +61,17 @@ impl ReqwestRpcClient {
         }
     }
 
+    /// Create an RPC client that uses the given [`reqwest::Client`].
+    /// Use this when the client must use custom DNS (e.g. resolver overrides or Hickory)
+    /// instead of the default system resolver.
+    pub fn new_with_client(url: Url, client: reqwest::Client) -> Self {
+        ReqwestRpcClient {
+            compat: CompatMode::V0_37,
+            inner: client,
+            url,
+        }
+    }
+
     pub fn set_compat_mode(&mut self, compat: CompatMode) {
         self.compat = compat;
     }

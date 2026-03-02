@@ -188,6 +188,22 @@ impl Client<crate::ReqwestRpcClient, DirectSecp256k1HdWallet> {
 
         Self::new_signing_with_rpc_client(config, rpc_client, wallet)
     }
+
+    /// Create a signing validator client that uses the given [`reqwest::Client`] for Nyxd RPC.
+    /// Use this when the client must use custom DNS (e.g. resolver overrides or Hickory)
+    /// instead of the default system resolver.
+    pub fn new_reqwest_signing_with_client(
+        config: Config,
+        mnemonic: bip39::Mnemonic,
+        reqwest_client: reqwest::Client,
+    ) -> DirectSigningReqwestRpcValidatorClient {
+        let rpc_client =
+            crate::ReqwestRpcClient::new_with_client(config.nyxd_url.clone(), reqwest_client);
+        let prefix = &config.nyxd_config.chain_details.bech32_account_prefix;
+        let wallet = DirectSecp256k1HdWallet::from_mnemonic(prefix, mnemonic);
+
+        Self::new_signing_with_rpc_client(config, rpc_client, wallet)
+    }
 }
 
 #[cfg(feature = "http-client")]
@@ -207,6 +223,18 @@ impl Client<HttpRpcClient> {
 impl Client<crate::ReqwestRpcClient> {
     pub fn new_reqwest_query(config: Config) -> QueryReqwestRpcValidatorClient {
         let rpc_client = crate::ReqwestRpcClient::new(config.nyxd_url.clone());
+        Self::new_with_rpc_client(config, rpc_client)
+    }
+
+    /// Create a query-only validator client that uses the given [`reqwest::Client`] for Nyxd RPC.
+    /// Use this when the client must use custom DNS (e.g. resolver overrides or Hickory)
+    /// instead of the default system resolver.
+    pub fn new_reqwest_query_with_client(
+        config: Config,
+        reqwest_client: reqwest::Client,
+    ) -> QueryReqwestRpcValidatorClient {
+        let rpc_client =
+            crate::ReqwestRpcClient::new_with_client(config.nyxd_url.clone(), reqwest_client);
         Self::new_with_rpc_client(config, rpc_client)
     }
 }
